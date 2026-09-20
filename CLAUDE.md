@@ -2,6 +2,8 @@
 
 A concurrent, segmented HTTP download manager in C++ — a reduced-scope MVP across **16 sessions in 7 weeks**, at roughly one 1-2 hour session per day, most days. This is a genuinely reduced-scope MVP, not the original full spec — the cuts below were decided deliberately, up front, based on an honest feasibility assessment done before writing any code. See "Feasibility & scope decisions" for why.
 
+**Concurrency model, settled:** a fixed pool of 3 worker threads with a shared FIFO work queue — not one thread per download. Capping concurrency keeps memory constant and stops 50 queued downloads from each crawling at 1/50th of the available bandwidth. The queue is the project's central piece of shared mutable state and is the real subject of session 5.
+
 **Scope decision, settled:** the Dear ImGui GUI is in scope, as sessions 12-14, and only after the console engine and the segmented download path are stable. It is also the first thing cut if the session 11 checkpoint says you're behind. A half-wired window on top of a working engine is worse than no window.
 
 ## Non-negotiables
@@ -37,7 +39,7 @@ Using `cpr`/`libcurl`/`std::thread` correctly is not the same as understanding w
 - **RAII** (sessions 1-2 onward): why a class's constructor acquiring a resource (a file handle, a curl handle) and its destructor releasing it means you can't forget to clean up, even if an exception is thrown partway through.
 - **Threads vs. concurrency vs. parallelism** (session 4): a thread is an independent sequence of execution sharing your process's memory; running multiple downloads on threads is concurrency (progress interleaves) whether or not it's true parallelism (simultaneous, on separate CPU cores) — for I/O-bound work like network downloads, the benefit comes from not blocking on one slow connection while others could be progressing, not from raw CPU parallelism.
 - **Race conditions, mutexes, and atomics** (session 5): a race condition is two threads reading/writing the same memory without coordination, where the outcome depends on timing — genuinely non-deterministic, which is exactly what makes it hard to debug. A `mutex` makes one thread wait its turn before touching shared data; an `std::atomic` is a lighter-weight tool for simple values (a counter, a flag) where the hardware itself guarantees the read-modify-write happens as one indivisible step, no waiting required.
-- **HTTP Range requests** (session 8): a client can ask a server for only bytes 1000-1999 of a file via a `Range` header; a server that supports it replies `206 Partial Content` instead of `200 OK`. That's the entire mechanism segmented downloading rests on — several Range requests for different byte spans of the same file, running concurrently, then concatenated back together in order.
+- **Condition variables, and why a worker pool needs one** (session 5): with a fixed pool of 3 workers and a queue of pending downloads, a worker that finds the queue empty must not spin in a loop checking it — that burns a CPU core doing nothing. A **condition variable** lets the thread sleep until another thread signals that something changed (a new download was queued), at which point the OS wakes it. It always pairs with a mutex, because the thing being checked is shared state. Two rules that are not obvious and will cause bugs if ignored: the wait must re-check the condition in a loop rather than trusting a single wake-up (a thread can wake without being signalled — a *spurious wakeup*), and a shutdown path must signal every waiting worker or the program will hang on exit with workers asleep forever. a client can ask a server for only bytes 1000-1999 of a file via a `Range` header; a server that supports it replies `206 Partial Content` instead of `200 OK`. That's the entire mechanism segmented downloading rests on — several Range requests for different byte spans of the same file, running concurrently, then concatenated back together in order.
 - **Cooperative cancellation** (session 10): a thread in the middle of a blocking network read can't be safely killed from outside. Cancellation works by *asking* — setting an atomic flag the worker checks between chunks, then letting the worker unwind and clean up its own temp file. Understand why "just kill the thread" is not an option.
 - **Why the GUI thread never touches worker-thread data directly** (session 13): a GUI redraw happens dozens of times a second on its own thread; if it read a `DownloadManager`'s state without synchronization while a worker thread was mid-write, that's the same race condition as above, just harder to spot because it shows up as visual glitching instead of a crash.
 
@@ -50,7 +52,7 @@ Concurrency is the hardest thing in this project and the easiest to fake-underst
 Four deliberate passes at the same reasoning, in increasingly real contexts:
 
 - **Session 4, before touching the download manager:** write a small, throwaway toy program (not part of the AstraFetch source tree) — spawn several threads that each increment one shared `int` a large number of times with *no* synchronization at all, and print the final count. It won't match the expected total. That's the race condition, made visible and undeniable, not just described. Then fix it once with a `std::mutex`, then again with `std::atomic<int>`, and compare. This is a warm-up, the same way session 1's STL practice is, not a new AstraFetch feature.
-- **Session 5:** before writing the real manager's shared progress state, explain out loud (or in a comment) which specific variables are shared across threads and why each one needs a mutex vs. can be a plain atomic — don't let library/pattern copying substitute for this.
+- **Session 5:** before writing the real manager, explain out loud (or in a comment) which specific variables are shared across threads and why each one needs a mutex vs. can be a plain atomic. The shared work queue is the main one — it is touched by the thread calling `add()` and by all 3 workers, so every push and pop happens under the mutex, and workers wait on the condition variable rather than polling. Per-download byte counters are the contrasting case: a single counter written by one worker and read by the console is an atomic, no mutex needed. Being able to say why those two differ is the point of this session.
 - **Session 9:** the segment-resume work reintroduces shared state (offsets, completion flags) under harder conditions (interacting with file I/O and networking at once) — round two: same "which variable, why this tool" reasoning, applied to a messier case.
 - **Session 10:** cancel or pause arriving *mid-segment* is round three. A single cancel has to tear down several in-flight Range requests and their temp files without leaking, double-freeing, or leaving a half-written file behind.
 - **Session 13:** GUI/worker interaction is round four — same reasoning again, applied to "the GUI thread only ever reads, never blocks on a worker."
@@ -59,18 +61,18 @@ One introduction on session 4 alone will not make this stick.
 
 ## Feature classification
 
-**MUST HAVE:** HTTP/HTTPS download-to-disk via a library, progress tracking, cancel, basic error handling (bad URL, connection failure), 2-3 downloads running concurrently (whole-file, threaded), console UI.
+**MUST HAVE:** HTTP/HTTPS download-to-disk via a library, progress tracking, cancel, basic error handling (bad URL, connection failure), 3 downloads running concurrently (whole-file, threaded) with a bounded work queue holding the rest, console UI.
 
 **SHOULD HAVE:** Download manager (add/pause/cancel/remove), JSON persistence of the download list and status across restarts, segmented download via Range requests as one demonstrated case, basic retry, basic Dear ImGui interface.
 
 **NICE TO HAVE:** Real byte-offset resume-after-restart; logging; any GUI polish beyond list + progress bars + buttons.
 
-**CUT entirely:** 4-8 concurrent segments as a general system; full reliability matrix; full unit+integration test suite; Qt or any heavy GUI framework; download priorities/complex queueing; graceful fallback for every server misbehavior; a performance-obsessed benchmark suite (one clean benchmark is enough).
+**CUT entirely:** 4-8 concurrent segments as a general system; full reliability matrix; full unit+integration test suite; Qt or any heavy GUI framework; download priorities, reordering, or any queue policy beyond first-in-first-out; graceful fallback for every server misbehavior; a performance-obsessed benchmark suite (one clean benchmark is enough).
 
 ## The realistic version, concretely
 
 - **Core:** HTTP download to disk via `cpr` (or `libcurl` directly if Range-request control is needed)
-- **Concurrency:** 2-3 concurrent *whole-file* downloads via `std::thread` — not per-segment concurrency as the default mode
+- **Concurrency:** a fixed pool of 3 worker threads pulling from a shared work queue. Adding more than 3 downloads queues the rest rather than spawning a thread each. Concurrency is whole-file by default, not per-segment.
 - **Segmented downloading:** implemented once, as a focused demo feature (split one file into 2-3 Range-request segments, download concurrently, concatenate) — not the default path for every download
 - **Pause/resume:** pause stops the thread cleanly via an atomic flag; resume re-issues a Range request from the last known byte offset
 - **Cancellation:** cooperative, and correct mid-segment — no orphaned temp files, no crash
@@ -131,7 +133,7 @@ This is the difference between stopping cleanly and abandoning. Do not defer any
 | 1 | 2 | `ofstream` basics, **streaming vs. loading fully into memory** | Stream response body directly to disk | Real file downloaded to disk, correct byte count |
 | 1 | 3 | — | Progress callback + cancel flag | Single download, console progress %, cancelable |
 | 2 | 4 | `std::thread` basics, **threads vs. concurrency vs. parallelism** + toy race-condition drill | Move one download onto a background thread | Download runs off main thread, program stays responsive, and you can explain why this helps for I/O-bound work specifically |
-| 2 | 5 | `mutex`/`atomic` basics, **race conditions, conceptually** | Download manager class, 2-3 concurrent whole-file downloads, shared progress state, **snapshot method** (see Stop-anywhere design) | Can queue multiple URLs, concurrent, no crashes/races under casual testing, console reads state only via the snapshot, and you can explain what would go wrong without the mutex/atomic |
+| 2 | 5 | `mutex`/`atomic` basics, **race conditions**, **condition variables** | Download manager class: fixed pool of 3 worker threads + shared work queue, per-download progress state, **snapshot method** (see Stop-anywhere design) | Can add 8 URLs and watch 3 run while 5 wait, no crashes/races under casual testing, workers sleep rather than spin when the queue is empty, program exits cleanly without hanging, console reads state only via the snapshot, and you can explain why the queue needs a mutex but the byte counter doesn't |
 | 2 | 6 | — | Per-download pause/cancel, basic retry, console command loop | Can pause/cancel each download individually via console commands |
 | 3 | 7 (checkpoint) | `nlohmann::json` | Persist download list + status to disk, restore on startup | Multi-threaded manager + persistence, all console-driven — see checkpoints below |
 | 3 | 8 | HTTP Range requests, **byte-serving/partial content, conceptually** | Segmented download for ONE file (2-3 segments, separate temp files, concatenate) | One file downloads faster via segments, final file verified byte-identical, and you can explain what a `Range` header and `206` response actually mean |
@@ -167,13 +169,14 @@ Priority order, always: **a working engine > correctness under repeated runs > t
 9. **Orphaned temp files on cancel** — every segment's temp file needs an owner responsible for deleting it on both the success and the cancel path. RAII applies here too.
 10. **Underestimating concurrency debugging time** — built-in buffer sessions (7 and 11); consider `-fsanitize=thread` if the compiler supports it, to catch races that won't be spotted by inspection.
 11. **Finals collision.** Seven weeks from a late-September start puts sessions 12-14, the hardest-to-debug work in the project, in early-to-mid November, with finals a few weeks behind that. Any slip pushes GUI debugging into exam prep. If the session 11 checkpoint lands during or after the second week of November, take the cut and ship console-only — school comes first, and the console version is already a complete project.
-12. **Scope creep** — the checkpoint decisions above are made now, not renegotiated under pressure later. **Calendar creep is the same risk in a new shape:** extending the weeks buys schedule slack, not license to add features back in. The 16 sessions above are the entire scope, regardless of how many weeks they take.
+12. **Condition variable misuse** — the two classic failures are waiting without re-checking the condition in a loop (spurious wakeups), and forgetting to signal waiting workers on shutdown, which hangs the program on exit with threads asleep. Both are silent until they aren't.
+13. **Scope creep** — the checkpoint decisions above are made now, not renegotiated under pressure later. **Calendar creep is the same risk in a new shape:** extending the weeks buys schedule slack, not license to add features back in. The 16 sessions above are the entire scope, regardless of how many weeks they take.
 
 ## Resume value
 
 Real threading, synchronization, and networking experience is something most student projects (web apps, scripts) don't demonstrate at all. What matters most in an interview: the ability to explain the synchronization decisions (why a mutex here, an atomic there, how races were avoided), how cancellation is done cooperatively, and an understanding of Range requests. That's the real engineering signal. The GUI's contribution is that it makes the project demoable in fifteen seconds and shows you can reason about thread-safe reads from a render loop — real, but secondary to the engine underneath it. Collect one clean, real benchmark (single-stream vs. concurrent/segmented download speed on the same large file). Being upfront in the README about what was cut and why reads as engineering maturity, not weakness.
 
-**If things go badly:** single download-to-disk + 2-3 concurrent whole-file downloads + segmentation + JSON persistence + console UI. Done well and explained clearly, that alone is already a legitimate, above-average student systems project.
+**If things go badly:** single download-to-disk + a 3-worker pool with a queue + segmentation + JSON persistence + console UI. Done well and explained clearly, that alone is already a legitimate, above-average student systems project.
 
 ## Working with the human (Olisaemeka) — pair-programming mode
 
