@@ -12,7 +12,7 @@ bool checkProgress(cpr::cpr_off_t dlTotal, cpr::cpr_off_t dSoFar, cpr::cpr_off_t
    percentage = (dSoFar*1.0)/(dlTotal*1.0)*100;
   }
   if (dlTotal == 0){
-    std::cout<< "Currently downloaded: " << percentage << "bytes";
+    std::cout<< "Currently downloaded: " << percentage << " bytes ,";
   }else{
   std::cout<<percentage << "% "<< "complete.";}
   if (dlTotal != 0 && percentage >50){
