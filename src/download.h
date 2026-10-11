@@ -13,4 +13,16 @@ class Download {
     bool cancelRequested;
     inline static std::atomic<int> downloadIdDispenser{0};
     int id;
+
+   public:
+    Download(std::string url, std::string fileName) {
+        this->url = url;
+        this->fileName = fileName;
+
+        this->status = "Queued";
+        this->dlTotal = 0.0;
+        this->dlSoFar = 0.0;
+        this->cancelRequested = false;
+        this->id = downloadIdDispenser++;
+        }
 };
