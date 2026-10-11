@@ -36,7 +36,7 @@ void downloadFile() {
     else if (response.status_code != 200) {
         std::cerr << "Error in receiving response:" << response.status_code;
     } else {
-        file.close();
+        file.flush();
 
         std::cout << std::filesystem::file_size("downloaded.html");
     }
