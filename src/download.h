@@ -8,9 +8,9 @@ class Download {
     std::string url;
     std::string fileName;
     std::string status;
-    cpr::cpr_off_t dlTotal;
-    cpr::cpr_off_t dlSoFar;
-    bool cancelRequested;
+    std::atomic<cpr::cpr_off_t> dlTotal;
+    std::atomic<cpr::cpr_off_t> dlSoFar;
+    std::atomic<bool> cancelRequested;
     inline static std::atomic<int> downloadIdDispenser{0};
     int id;
 
@@ -24,5 +24,15 @@ class Download {
         this->dlSoFar = 0.0;
         this->cancelRequested = false;
         this->id = downloadIdDispenser++;
+    }
+
+    bool updateProgress(cpr::cpr_off_t dlTotal, cpr::cpr_off_t dlSoFar, cpr::cpr_off_t ulTotal,
+                        cpr::cpr_off_t uSoFar, intptr_t userData) {
+        if (this->cancelRequested == true) {
+            return false;
         }
+        this->dlSoFar = dlSoFar;
+        this->dlTotal = dlTotal;
+        return true;
+    }
 };
