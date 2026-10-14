@@ -49,4 +49,6 @@ class Download {
     }
 
     std::string getUrl() { return this->url; }
+
+    int getId() { return this->id; }
 };
