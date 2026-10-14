@@ -47,4 +47,6 @@ class Download {
         std::lock_guard<std::mutex> lock(m);
         this->status = arg;
     }
+
+    std::string getUrl() { return this->url; }
 };
