@@ -37,12 +37,14 @@ class Download {
         this->dlTotal = dlTotal;
         return true;
     }
-    // Mentally walk through scenarios of why we need mutexes on both read and write for getStatus()
-    /* Reminder to look through template parameters and why they are used in method calling e.g
-     * std::lock_guard<std::mutex> lock(m) */
-    // Look thtough how two different mutexes in getStatus is an issue
+
     std::string getStatus() {
         std::lock_guard<std::mutex> lock(m);
         return this->status;
+    }
+
+    void setStatus(std::string arg) {
+        std::lock_guard<std::mutex> lock(m);
+        this->status = arg;
     }
 };
