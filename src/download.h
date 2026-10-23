@@ -1,6 +1,9 @@
 #include <cpr/cpr.h>
 
 #include <atomic>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <mutex>
 #include <string>
 #include <tuple>
@@ -22,7 +25,7 @@ class Download {
         this->url = url;
         this->fileName = fileName;
 
-        this->status = "Queued";
+        this->status = "Download Queued";
         this->dlTotal = 0.0;
         this->dlSoFar = 0.0;
         this->cancelRequested = false;
@@ -56,5 +59,30 @@ class Download {
     std::tuple<int, std::string, std::string, cpr::cpr_off_t, cpr::cpr_off_t> getSnapshot() {
         std::lock_guard<std::mutex> lock(m);
         return {this->id, this->fileName, this->status, this->dlSoFar, this->dlTotal};
+    }
+    // NOTE: FOR FUTURE REFERENCE PURPOSES, OUR RESPONSE OBJECT COULD NOT CONTAIN AN ERROR MESSAGE,
+    // BUT STILL BE A FAILED DOWNLOAD FILE {CHECK WHY THIS WORKS, AND EXPLAIN}
+    void download() {
+        std::string par = "Download In progress";
+        this->setStatus(par);
+        std::ofstream file(this->fileName, std::ios::binary);
+        auto progressLambda = [this](cpr::cpr_off_t dlTotal, cpr::cpr_off_t dlSoFar,
+                                     cpr::cpr_off_t ulTotal, cpr::cpr_off_t uSoFar,
+                                     intptr_t userData) {
+            return this->updateProgress(dlTotal, dlSoFar, 0, 0, 0);
+        };
+        cpr::Response response =
+            cpr::Download(file, cpr::Url{this->url}, cpr::ProgressCallback(progressLambda, 0));
+        if (response.error.code != cpr::ErrorCode::OK) {
+            par = "Download Failed";
+            this->setStatus(par);
+        } else if (response.status_code != 200) {
+            par = "Download Failed";
+            this->setStatus(par);
+        } else {
+            file.flush();
+            par = "Download Successful";
+            this->setStatus(par);
+        }
     }
 };
