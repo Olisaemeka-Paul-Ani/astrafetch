@@ -52,6 +52,14 @@ class Download {
         this->status = arg;
     }
 
+    void cancelDownload() {
+        if (this->cancelRequested == true) {
+            return;
+        }
+        this->cancelRequested = true;
+        return;
+    }
+
     std::string getUrl() { return this->url; }
 
     int getId() { return this->id; }
