@@ -81,7 +81,10 @@ class Download {
         };
         cpr::Response response =
             cpr::Download(file, cpr::Url{this->url}, cpr::ProgressCallback(progressLambda, 0));
-        if (response.error.code != cpr::ErrorCode::OK) {
+        if (response.error.code == cpr::ErrorCode::ABORTED_BY_CALLBACK) {
+            par = "Download Cancelled";
+            this->setStatus(par);
+        } else if (response.error.code != cpr::ErrorCode::OK) {
             par = "Download Failed";
             this->setStatus(par);
         } else if (response.status_code != 200) {
@@ -92,5 +95,6 @@ class Download {
             par = "Download Successful";
             this->setStatus(par);
         }
+        return;
     }
 };
