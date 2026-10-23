@@ -68,8 +68,7 @@ class Download {
         std::lock_guard<std::mutex> lock(m);
         return {this->id, this->fileName, this->status, this->dlSoFar, this->dlTotal};
     }
-    // NOTE: FOR FUTURE REFERENCE PURPOSES, OUR RESPONSE OBJECT COULD NOT CONTAIN AN ERROR MESSAGE,
-    // BUT STILL BE A FAILED DOWNLOAD FILE {CHECK WHY THIS WORKS, AND EXPLAIN}
+
     void download() {
         std::string par = "Download In progress";
         this->setStatus(par);
