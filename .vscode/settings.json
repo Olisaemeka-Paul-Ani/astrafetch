@@ -1,5 +1,6 @@
 {
   "cmake.useCMakePresets": "always",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
   "editor.formatOnSave": true,
   "[cpp]": {
     "editor.defaultFormatter": "ms-vscode.cpptools"
