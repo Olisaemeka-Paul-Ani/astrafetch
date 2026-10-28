@@ -25,4 +25,11 @@ class DownloadManager {
         q.pop();
         return d;
     }
+
+    void addDownload(std::string url, std::string fileName) {
+        std::unique_lock<std::mutex> lock(m);
+        q.push(std::make_shared<Download>(url, fileName));
+        lock.unlock();
+        cv.notify_one();
+    }
 };
