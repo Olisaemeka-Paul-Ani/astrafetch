@@ -35,6 +35,14 @@ class DownloadManager {
         }
     }
 
+    DownloadManager() {
+        int i = 0;
+        while (i < this->workers.size()) {
+            workers[i] = std::thread(&DownloadManager::workerLoop, this);
+            i = i + 1;
+        }
+    }
+
     auto getDownload() {
         std::unique_lock<std::mutex> lock(m);
         while (q.empty()) {
