@@ -20,6 +20,17 @@ class DownloadManager {
     std::array<std::thread, 3> workers;
 
    public:
+    ~DownloadManager() {
+        for (auto& [name, age] : this->store) {
+            age->cancelDownload();
+        }
+        int i = 0;
+        cv.notify_all();
+        while (i < this->workers.size()) {
+            this->workers[i].join();
+            i = i + 1;
+        }
+    }
     auto getDownload() {
         std::unique_lock<std::mutex> lock(m);
         while (q.empty()) {
