@@ -1,4 +1,5 @@
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
@@ -18,6 +19,7 @@ class DownloadManager {
     std::condition_variable cv;
     std::unordered_map<int, std::shared_ptr<Download>> store;
     std::array<std::thread, 3> workers;
+    std::atomic<bool> running = true;
 
    public:
     ~DownloadManager() {
@@ -26,11 +28,13 @@ class DownloadManager {
         }
         int i = 0;
         cv.notify_all();
+        this->running = false;
         while (i < this->workers.size()) {
             this->workers[i].join();
             i = i + 1;
         }
     }
+
     auto getDownload() {
         std::unique_lock<std::mutex> lock(m);
         while (q.empty()) {
@@ -42,10 +46,18 @@ class DownloadManager {
         return d;
     }
 
+    void workerLoop() {
+        while (running) {
+            auto d = this->getDownload();
+            d->download();
+        }
+    }
+
     void addDownload(std::string url, std::string fileName) {
         std::unique_lock<std::mutex> lock(m);
         auto temp = std::make_shared<Download>(url, fileName);
         q.push(temp);
+
         lock.unlock();
 
         std::unique_lock<std::mutex> lockT(mapMutex);
