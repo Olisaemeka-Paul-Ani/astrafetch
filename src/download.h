@@ -1,5 +1,5 @@
 #include <cpr/cpr.h>
-
+#pragma once
 #include <atomic>
 #include <filesystem>
 #include <fstream>
@@ -30,6 +30,7 @@ class Download {
         this->dlSoFar = 0.0;
         this->cancelRequested = false;
         this->id = downloadIdDispenser++;
+        std::cout << "Download created" << std::endl;
     }
 
     bool updateProgress(cpr::cpr_off_t dlTotal, cpr::cpr_off_t dlSoFar, cpr::cpr_off_t ulTotal,
@@ -76,6 +77,19 @@ class Download {
         auto progressLambda = [this](cpr::cpr_off_t dlTotal, cpr::cpr_off_t dlSoFar,
                                      cpr::cpr_off_t ulTotal, cpr::cpr_off_t uSoFar,
                                      intptr_t userData) {
+            /*
+            float percentage;
+            if (dlTotal == 0) {
+                percentage = dlSoFar;
+            } else {
+                percentage = (dlSoFar * 1.0) / (dlTotal * 1.0) * 100;
+            }
+            if (dlTotal == 0) {
+                std::cout << "Currently downloaded: " << percentage << " bytes ,";
+            } else {
+                std::cout << percentage << "% " << "complete.";
+            }
+            */
             return this->updateProgress(dlTotal, dlSoFar, 0, 0, 0);
         };
         cpr::Response response =
