@@ -1,3 +1,4 @@
+#pragma once
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -31,6 +32,7 @@ class DownloadManager {
         this->running = false;
         while (i < this->workers.size()) {
             this->workers[i].join();
+            std::cout << "Worker " << i + 1 << " has shut down" << std::endl;
             i = i + 1;
         }
     }
@@ -39,6 +41,7 @@ class DownloadManager {
         int i = 0;
         while (i < this->workers.size()) {
             workers[i] = std::thread(&DownloadManager::workerLoop, this);
+            std::cout << "Worker " << i + 1 << " has been created" << std::endl;
             i = i + 1;
         }
     }
@@ -51,12 +54,14 @@ class DownloadManager {
 
         std::shared_ptr<Download> d = q.front();
         q.pop();
+
         return d;
     }
 
     void workerLoop() {
         while (running) {
             auto d = this->getDownload();
+            std::cout << "Download has been popped from queue" << std::endl;
             d->download();
         }
     }
@@ -71,7 +76,7 @@ class DownloadManager {
         std::unique_lock<std::mutex> lockT(mapMutex);
         store[temp->getId()] = temp;
         lockT.unlock();
-
+        std::cout << "Download has been added to queue" << std::endl;
         cv.notify_one();
     }
 };
