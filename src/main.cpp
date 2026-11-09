@@ -1,9 +1,13 @@
 #include <cpr/cpr.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <thread>
+
+#include "download.h"
+#include "manager.h"
 
 bool checkProgress(cpr::cpr_off_t dlTotal, cpr::cpr_off_t dSoFar, cpr::cpr_off_t ulTotal,
                    cpr::cpr_off_t uSoFar, intptr_t userData) {
@@ -42,7 +46,14 @@ void downloadFile() {
     }
 }
 int main() {
-    std::thread tOne(downloadFile);
-    tOne.join();
-    return 0;
+    DownloadManager manager;
+    manager.addDownload("https://speed.hetzner.de/100MB.bin", "dl1.bin");
+    manager.addDownload("https://proof.ovh.net/files/100Mb.dat", "dl2.bin");
+    manager.addDownload("https://speed.hetzner.de/100MB.bin", "dl3.bin");
+    manager.addDownload("https://httpbin.org/bytes/10000000", "dl4.bin");
+    manager.addDownload("https://speed.hetzner.de/100MB.bin", "dl5.bin");
+    manager.addDownload("https://proof.ovh.net/files/100Mb.dat", "dl6.bin");
+    manager.addDownload("https://httpbin.org/bytes/10000000", "dl7.bin");
+    manager.addDownload("https://speed.hetzner.de/100MB.bin", "dl8.bin");
+    std::this_thread::sleep_for(std::chrono::seconds(30));
 }
