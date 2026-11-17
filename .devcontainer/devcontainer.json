@@ -1,0 +1,7 @@
+{
+  "image": "mcr.microsoft.com/devcontainers/cpp:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {}
+  },
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code"
+}
