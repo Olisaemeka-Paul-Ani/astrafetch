@@ -30,6 +30,7 @@ class DownloadManager {
         int i = 0;
         cv.notify_all();
         this->running = false;
+        std::cout << "Destructor: about to join workers" << std::endl;
         while (i < this->workers.size()) {
             this->workers[i].join();
             std::cout << "Worker " << i + 1 << " has shut down" << std::endl;
@@ -63,6 +64,7 @@ class DownloadManager {
             auto d = this->getDownload();
             std::cout << "Download has been popped from queue" << std::endl;
             d->download();
+            std::cout << "Download " << d->getId() << " ended: " << d->getStatus() << std::endl;
         }
     }
 

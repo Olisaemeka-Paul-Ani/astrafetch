@@ -56,4 +56,5 @@ int main() {
     manager.addDownload("https://httpbin.org/bytes/10000000", "dl7.bin");
     manager.addDownload("https://speed.hetzner.de/100MB.bin", "dl8.bin");
     std::this_thread::sleep_for(std::chrono::seconds(30));
+    std::cout << "main: 30s sleep over" << std::endl;
 }
