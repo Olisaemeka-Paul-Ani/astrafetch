@@ -51,8 +51,34 @@ Spec and schedule live in `CLAUDE.md`.
 - Words: threads *wait on* a cv, they *hold* a mutex; a mutex is the object, a lock (`unique_lock`) is the RAII
   object that locks it; "atomic" describes operations on data, not functions like `join()`.
 
+**Next sitting** (updated below)
+
+## 2026-11-18 (later) — snapshot
+
+**Done (mine)**
+- Shutdown fix verified over 5 repeated runs, committed and pushed.
+- `DownloadManager::snapshotEntry` (public struct: `id`, `url`, `status`, `dlSoFar`, `dlTotal`, byte counts as
+  `cpr::cpr_off_t` — an `int` would overflow past ~2 GB).
+- `Download::getSnapshot()` now also returns `url`, so the manager gets every field from one locked read.
+- `DownloadManager::getSnapshot()`: locks `mapMutex`, loops `store`, builds a `std::vector<snapshotEntry>`, returns it.
+
+**Concepts**
+- Snapshot = read-only copy, taken under the lock. Reading (incl. the `id`) happens through it; acting
+  (`pause(id)`, `cancel(id)`) happens through manager methods. The id is in the snapshot so the actor knows *which*.
+- Postfix operators (`.` `->` `()` `[]`) bind tighter than prefix (`*` `&` `!`): `*p.f()` is `*(p.f())`. Use `p->f()`.
+- `std::unique_lock` can `unlock()` early (and relock); `std::lock_guard` can't. `cv.wait` needs `unique_lock`.
+- Without the lock in the snapshot: an `addDownload()` insert can rehash the `unordered_map` mid-loop → the loop's
+  iterator points at freed memory → undefined behavior. A mutex only protects data if *every* accessor locks it.
+
+**Open question — understand later**
+- Deadlock: two threads each holding one mutex and blocked in `lock()` waiting for the other's. Neither reaches its
+  unlock, because locking is a blocking call. Consistent lock ordering prevents it.
+- My code: the snapshot takes `mapMutex` → then `Download::m`. **Check: does anything take them in the opposite
+  order?** (Answer this myself.)
+
 **Next sitting**
-1. Run it several more times — one clean run proves little with threads.
-2. Commit the fix (small, one feature).
-3. Fix the test URLs: only `proof.ovh.net` works; print `response.error.message` / `status_code` on failure.
-4. Snapshot method on the manager (rest of session 5's Done =).
+1. Answer the lock-order question above.
+2. Console uses the snapshot: `main.cpp` calls `manager.getSnapshot()` and prints rows while downloads run
+   (last item of session 5's Done =).
+3. Be able to explain, out loud: why the queue needs a mutex but the byte counter can be an atomic.
+4. Fix the test URLs: only `proof.ovh.net` works; print `response.error.message` / `status_code` on failure.
