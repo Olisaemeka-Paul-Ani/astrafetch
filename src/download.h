@@ -65,9 +65,9 @@ class Download {
 
     int getId() { return this->id; }
 
-    std::tuple<int, std::string, std::string, cpr::cpr_off_t, cpr::cpr_off_t> getSnapshot() {
+    std::tuple<int, std::string, std::string, std::string, cpr::cpr_off_t, cpr::cpr_off_t> getSnapshot() {
         std::lock_guard<std::mutex> lock(m);
-        return {this->id, this->fileName, this->status, this->dlSoFar, this->dlTotal};
+        return {this->id, this->fileName, this->status, this->url, this->dlSoFar, this->dlTotal};
     }
 
     void download() {
