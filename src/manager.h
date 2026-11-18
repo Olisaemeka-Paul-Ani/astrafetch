@@ -28,14 +28,31 @@ class DownloadManager {
             age->cancelDownload();
         }
         int i = 0;
-        cv.notify_all();
         this->running = false;
+        cv.notify_all();
+
         std::cout << "Destructor: about to join workers" << std::endl;
         while (i < this->workers.size()) {
             this->workers[i].join();
             std::cout << "Worker " << i + 1 << " has shut down" << std::endl;
             i = i + 1;
         }
+    }
+
+    auto getDownload() {
+        std::unique_lock<std::mutex> lock(m);
+        while (q.empty()) {
+            cv.wait(lock);
+            if (this->running == false) {
+                std::shared_ptr<Download> d(nullptr);
+                return d;
+            } 
+        }
+        
+                std::shared_ptr<Download> d = q.front();
+                q.pop();
+                return d;
+          
     }
 
     DownloadManager() {
@@ -47,23 +64,16 @@ class DownloadManager {
         }
     }
 
-    auto getDownload() {
-        std::unique_lock<std::mutex> lock(m);
-        while (q.empty()) {
-            cv.wait(lock);
-        }
-
-        std::shared_ptr<Download> d = q.front();
-        q.pop();
-
-        return d;
-    }
-
     void workerLoop() {
         while (running) {
             auto d = this->getDownload();
-            std::cout << "Download has been popped from queue" << std::endl;
-            d->download();
+            if (d != nullptr) {
+                std::cout << "Download has been popped from queue" << std::endl;
+                d->download();
+            } else {
+                std::cout << "Worker thread records empty download" << std::endl;
+                return;
+            }
             std::cout << "Download " << d->getId() << " ended: " << d->getStatus() << std::endl;
         }
     }
