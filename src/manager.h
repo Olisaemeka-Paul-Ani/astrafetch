@@ -9,7 +9,8 @@
 #include <queue>
 #include <thread>
 #include <unordered_map>
-
+#include <vector>
+#include <tuple>
 #include "download.h"
 
 class DownloadManager {
@@ -21,8 +22,18 @@ class DownloadManager {
     std::unordered_map<int, std::shared_ptr<Download>> store;
     std::array<std::thread, 3> workers;
     std::atomic<bool> running = true;
+    
+
 
    public:
+   struct snapshotEntry{
+        int id; 
+        std::string url;
+        std::string status;
+        cpr::cpr_off_t dlTotal;
+        cpr::cpr_off_t dlSoFar;
+
+    };
     ~DownloadManager() {
         for (auto& [name, age] : this->store) {
             age->cancelDownload();
@@ -91,4 +102,6 @@ class DownloadManager {
         std::cout << "Download has been added to queue" << std::endl;
         cv.notify_one();
     }
+
+    
 };
