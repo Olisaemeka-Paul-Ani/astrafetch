@@ -103,5 +103,23 @@ class DownloadManager {
         cv.notify_one();
     }
 
+    std::vector<snapshotEntry> getSnapshot(){
+        std::unique_lock<std::mutex> lockTh(mapMutex);
+        std::vector<snapshotEntry> output;
+        for (auto& [num, dwnl]: this->store){
+            snapshotEntry placeHolder;
+            std::tuple<int, std::string, std::string, std::string, cpr::cpr_off_t, cpr::cpr_off_t> placeTwo = (*dwnl).getSnapshot();
+            placeHolder.id = std::get<0>(placeTwo);
+            placeHolder.status = std::get<2>(placeTwo);
+            placeHolder.url = std::get<3>(placeTwo);
+            
+            placeHolder.dlTotal = std::get<5>(placeTwo);
+            placeHolder.dlSoFar = std::get<4>(placeTwo);
+
+            output.push_back(placeHolder);
+        }
+        return output;
+    }
+
     
 };
