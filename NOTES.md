@@ -76,8 +76,68 @@ Spec and schedule live in `CLAUDE.md`.
 - My code: the snapshot takes `mapMutex` → then `Download::m`. **Check: does anything take them in the opposite
   order?** (Answer this myself.)
 
+## Deadlocks — study notes + self-check
+
+**Definition.** A deadlock is when two (or more) threads are each blocked waiting for something that only another
+blocked thread can give up — so none of them ever proceeds. Nothing crashes, nothing errors; the program just stops.
+
+**The classic case — two mutexes, opposite order:**
+```
+Thread 1                          Thread 2
+lock(A)   ✓ holds A
+                                  lock(B)   ✓ holds B
+lock(B)   ✗ waits for T2…
+                                  lock(A)   ✗ waits for T1…
+```
+**Why they don't "eventually release":** a thread releases a mutex only when its code *reaches* the unlock (end of
+scope for `lock_guard`/`unique_lock`, or `.unlock()`). `lock()` is a **blocking call** — the thread is paused
+*inside* it and runs no further code, including its unlock. T1 can't release A until it gets B; B is only released
+when T2 gets A. Circular wait → forever.
+
+**All four have to be true for a deadlock** (break any one and it can't happen):
+1. *Mutual exclusion* — a mutex can be held by only one thread at a time.
+2. *Hold and wait* — a thread holds one mutex while waiting for another.
+3. *No preemption* — nobody can take a mutex away from the thread holding it.
+4. *Circular wait* — T1 waits on T2, T2 waits on T1 (or a longer cycle).
+
+**How to prevent it (in order of what I'll actually use):**
+- **Consistent lock ordering** — every place in the codebase that holds two mutexes takes them in the same order.
+  Breaks *circular wait*. This is the CLAUDE.md rule. Write the order down once and stick to it.
+- **Hold only one mutex at a time** where possible — e.g. `addDownload()` unlocks `m` *before* taking `mapMutex`.
+  Breaks *hold and wait*.
+- **Keep critical sections small** — don't call unknown/other-locking functions, do I/O, or wait on the network
+  while holding a mutex.
+- **`std::scoped_lock lk(A, B);`** (C++17) — locks several mutexes together using a deadlock-avoiding algorithm,
+  so order doesn't matter at that call site.
+
+**Other ways to deadlock (same idea, one thread or no second mutex):**
+- **Locking the same `std::mutex` twice in one thread** — e.g. a method that holds `m` calls another method that
+  also locks `m`. The thread waits for itself, forever. (`std::mutex` is not re-entrant.)
+- **`join()`ing a thread that is waiting for you** — e.g. holding a mutex the worker needs, then calling `join()`.
+- **A condition variable nobody will ever notify** — what happened in session 5's shutdown bug. Strictly that's a
+  "lost wake-up"/hang rather than a lock-cycle deadlock, but it looks identical from outside.
+
+**What it looks like when it happens:** output stops, the program never exits, CPU ~0% in `top` (threads are
+asleep, not spinning). To see where each thread is stuck: run under `gdb`, Ctrl+C, then `thread apply all bt` —
+the stuck threads will be sitting in `lock()` / `wait()`. Compiling with `-fsanitize=thread` also reports
+**lock-order inversion** even on runs where the deadlock didn't actually happen.
+
+**Self-check — answer these without looking back up:**
+1. In one sentence: what is a deadlock?
+2. Why can't T1 just release A while it waits for B?
+3. Name the four conditions. Which one does consistent lock ordering break? Which does "hold one mutex at a time" break?
+4. If every thread always locks A before B, walk through why the circular wait above can't form.
+5. What happens if a method holding `std::mutex m` calls another method that also locks `m`?
+6. A program hangs at 0% CPU. Deadlock or infinite loop — and how would you tell?
+7. **In AstraFetch:** list every place that holds two mutexes at once and the order it takes them. Does any pair
+   appear in both orders? (`getSnapshot()` takes `mapMutex` → `Download::m`.)
+
+**Drill (like session 4's race drill — throwaway, outside the repo):** write a toy program with two mutexes and two
+threads that lock them in opposite orders, each with a short `sleep_for` between the two locks. Run it and watch it
+hang. Then fix it twice: once by making both threads use the same order, once with `std::scoped_lock`.
+
 **Next sitting**
-1. Answer the lock-order question above.
+1. Answer the lock-order question above (self-check #7).
 2. Console uses the snapshot: `main.cpp` calls `manager.getSnapshot()` and prints rows while downloads run
    (last item of session 5's Done =).
 3. Be able to explain, out loud: why the queue needs a mutex but the byte counter can be an atomic.
