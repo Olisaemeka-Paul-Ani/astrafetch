@@ -162,8 +162,30 @@ hang. Then fix it twice: once by making both threads use the same order, once wi
 - One order, used in one place → no cycle possible. ✓
 - Naming: kept both mutexes as `m` (separate classes) — my call.
 
-**Next sitting**
-2. Console uses the snapshot: `main.cpp` calls `manager.getSnapshot()` and prints rows while downloads run
-   (last item of session 5's Done =).
-3. Be able to explain, out loud: why the queue needs a mutex but the byte counter can be an atomic.
-4. Fix the test URLs: only `proof.ovh.net` works; print `response.error.message` / `status_code` on failure.
+## 2026-11-22 — session 5 DONE
+
+**Console reads the snapshot (mine):** `main()` loops for 30s (`steady_clock` elapsed time), each pass takes one
+`manager.getSnapshot()`, prints every row, then `sleep_for(2s)` — ~15 overviews. Verified: percentages climb.
+- Bug I hit: `sleep_for` inside the per-row loop → 2s *per row* → only 2 overviews in 30s, and rows were stale
+  by the time they printed. Fix: sleep once per snapshot, after printing all rows.
+- Bug I hit: `dlSoFar / dlTotal * 100` with integers → integer division truncates → only 0% or 100%.
+  Fix: `dlSoFar * 1.0 / dlTotal * 100`. (`cpr::cpr_off_t` = 64-bit signed integer, "offset type".)
+- Sleep in the display loop = pacing; without it: terminal flood, a core at 100%, constant `mapMutex` contention.
+  A sleeping thread is *blocked* (not preempted) — the scheduler gives the CPU to runnable threads (workers).
+- `.` accesses an object's member; `::` accesses something inside a class/namespace (`DownloadManager::snapshotEntry`).
+
+**The session-5 explanation, in my words (refined):**
+> A byte counter **can** use an atomic, because changing the value of a primitive **can** occur in one
+> uninterruptible step using a special CPU instruction — `std::atomic` is what makes the compiler use that
+> instruction; a plain `int` doing `++` is still three steps (read, add, write). A queue is a complex object, not a
+> primitive: a single `push` or `pop` changes several internal pieces (pointers, size, memory), so no single
+> instruction can do it — a mutex has to be used to protect **the queue** so **other threads** can't access it
+> mid-modification. A mutex also covers a **sequence** of operations — checking `empty()` and then `front()` and
+> `pop()` must happen together — which an atomic can't.
+
+**Build stages:** configure (`cmake --preset default`, once) → build (`cmake --build build` = compile each changed
+.cpp → link with cpr/curl/OpenSSL into the executable) → run. Compile errors vs. "undefined reference" link errors.
+
+**Next sitting — session 6:** per-download pause/cancel, basic retry, console command loop
+(`add <url>`, `list`, `pause <id>`, `resume <id>`, `cancel <id>`, `quit`). The command loop replaces the 30s timer.
+Still open: fix the test URLs (only `proof.ovh.net` works; print `response.error.message` / `status_code`).
