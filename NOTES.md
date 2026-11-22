@@ -136,8 +136,33 @@ the stuck threads will be sitting in `lock()` / `wait()`. Compiling with `-fsani
 threads that lock them in opposite orders, each with a short `sleep_for` between the two locks. Run it and watch it
 hang. Then fix it twice: once by making both threads use the same order, once with `std::scoped_lock`.
 
+## 2026-11-22 — deadlocks, worked through piece by piece
+
+**What I can now explain myself**
+- `lock()` on a held mutex: the thread blocks (sleeps); it continues only after the holder releases *and* the OS
+  schedules it. With several waiters, one gets it per unlock; which one is **not guaranteed** (a non-waiting thread
+  can even barge in first). Unlucky thread that keeps losing = starvation.
+- **A thread keeps every mutex it holds until its own code reaches the unlock** — whether preempted, blocked on
+  another mutex, in `join()`, or in `sleep_for`. Only exception: `cv.wait` releases its mutex on purpose.
+- Why `cv.wait` must release: if a worker slept holding the queue mutex, `addDownload()` could never lock it to
+  push → nobody notifies → worker and adder each wait on the other forever. (Found that deadlock myself.)
+- **Chain vs. cycle:** T3→T1→T2→(nothing) unwinds; T1→T2→T1 never does. **A deadlock is a cycle of waiting.**
+- It's **timing-dependent**: opposite-order code is fine whenever one thread gets *both* mutexes before the other
+  gets its first; it hangs only in that window. Works 999 times, hangs on the 1000th.
+- Can't fix it by controlling preemption (impossible, and on 2 cores there's no preemption at all).
+  Fix = **consistent lock ordering**: then a thread waiting for B can only hold A, so every wait points *forward* —
+  no loop back, no cycle, under any schedule.
+- **Mutexes are held by threads, not classes.** Calling into another class's locking method from inside a critical
+  section means *the same thread* holds both. Indirect locks are where deadlocks hide.
+
+**AstraFetch lock-order check (self-check #7) — answered**
+- Only `DownloadManager::getSnapshot()` holds two at once: `mapMutex` → `Download::m` (via `dwnl->getSnapshot()`).
+- `addDownload()` releases the queue mutex before taking `mapMutex` — never holds both.
+- `getDownload()` and all `Download` methods hold one mutex only.
+- One order, used in one place → no cycle possible. ✓
+- Naming: kept both mutexes as `m` (separate classes) — my call.
+
 **Next sitting**
-1. Answer the lock-order question above (self-check #7).
 2. Console uses the snapshot: `main.cpp` calls `manager.getSnapshot()` and prints rows while downloads run
    (last item of session 5's Done =).
 3. Be able to explain, out loud: why the queue needs a mutex but the byte counter can be an atomic.
