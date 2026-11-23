@@ -1,5 +1,5 @@
 #include <cpr/cpr.h>
-
+#include <string>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -8,6 +8,7 @@
 
 #include "download.h"
 #include "manager.h"
+enum class loopState {Running, Quit, InputClosed};
 
 bool checkProgress(cpr::cpr_off_t dlTotal, cpr::cpr_off_t dSoFar, cpr::cpr_off_t ulTotal,
                    cpr::cpr_off_t uSoFar, intptr_t userData) {
@@ -56,21 +57,27 @@ int main() {
     manager.addDownload("https://proof.ovh.net/files/100Mb.dat", "dl6.bin");
     manager.addDownload("https://httpbin.org/bytes/10000000", "dl7.bin");
     manager.addDownload("https://speed.hetzner.de/100MB.bin", "dl8.bin");
-    const auto start = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now()-start<duration){
-       std::vector<DownloadManager::snapshotEntry> overview = manager.getSnapshot();
-       int i = 0;
-       std::cout<<"DOWNLOAD OVERVIEW"<<std::endl;
-       while (i < overview.size()){
-        if (overview[i].dlTotal == 0.0){
-            std::cout<<"Download id: "<< overview[i].id << " "<< "Download url "<<overview[i].url<<" "<< "Download status: " << overview[i].status << " "<< "Progress: "<<overview[i].dlSoFar << "bytes" <<std::endl;
-        }else{
-        std::cout<<"Download id: "<< overview[i].id << " "<< "Download url "<<overview[i].url<<" "<< "Download status: " << overview[i].status << " "<< "Progress: "<<((overview[i].dlSoFar*1.0) /overview[i].dlTotal)*100 << "%" <<std::endl;
-       }
+   loopState state = loopState::Running;
+    std::vector<std::string> proof;
+    while (state == loopState::Running){
+        std::cout<<"PLEASE TYPE COMMAND: ";
+        std::string input;
+        if (!(std::getline(std::cin, input))){
+            state = loopState::InputClosed;
+            
+        }
+        else if (input == "quit"){
+            state = loopState::Quit;
+        }
+        
       
-       i=i+1;
     }
-     std::this_thread::sleep_for(std::chrono::seconds(2));
+    if (state == loopState::Quit){
+    std::cout << "User quit application" << std::endl;
+    } if (state == loopState::InputClosed){
+        std::cout<<"ERROR: Input Closed"<<std::endl;
     }
-    std::cout << "main: 30s sleep over" << std::endl;
+     
+
+    return 0;
 }
