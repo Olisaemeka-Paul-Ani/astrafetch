@@ -189,3 +189,26 @@ hang. Then fix it twice: once by making both threads use the same order, once wi
 **Next sitting — session 6:** per-download pause/cancel, basic retry, console command loop
 (`add <url>`, `list`, `pause <id>`, `resume <id>`, `cancel <id>`, `quit`). The command loop replaces the 30s timer.
 Still open: fix the test URLs (only `proof.ovh.net` works; print `response.error.message` / `status_code`).
+
+## 2026-11-23 — session 6 started
+
+**Done (mine):** console command loop in `main()` (commit `d9cbae5`). Reads lines with `std::getline` until `quit` or
+input closes; state tracked with `enum class loopState { Running, Quit, InputClosed }`. Other lines are ignored for now.
+Tested: typed/piped commands then `quit`, and closed input (Ctrl+D / pipe ends) — workers shut down cleanly both ways.
+
+**Concepts**
+- `std::getline` reads one whole line (spaces included, `\n` dropped) into a `std::string`; blocks until Enter.
+  Everything typed is text — `"3"` is a string until `std::stoi`.
+- It doesn't throw: it returns the stream, which tests `false` only when input is **closed** (EOF: Ctrl+D, end of a
+  piped file). An empty line is a successful read of `""`. Each line ends at `\n`; EOF happens once, at the very end.
+- `try`/`catch` only catches **thrown** exceptions (from any depth). `std::stoi` throws (`invalid_argument`,
+  `out_of_range`); `getline` and `cpr::Download` report failure through return values you must check.
+- `std::string` is never "falsy" — use `.empty()`.
+- `enum class`: a type limited to a named list; `state = 'q'` won't compile (that's the point). Rename a value →
+  compiler finds every stale use.
+- Build after every edit: `cmake --build build && ./build/astrafetch`. Codespaces never builds on save.
+- Test without typing: `printf 'hello\nquit\n' | ./build/astrafetch`.
+
+**Next sitting:** split each line into command + argument (`std::istringstream`, `#include <sstream>`), print
+"unknown command" for anything unrecognized, then `list` (reuse the overview code from commit `e6abcf8`),
+then `cancel <id>` (needs `std::stoi` in try/catch + a manager method).
